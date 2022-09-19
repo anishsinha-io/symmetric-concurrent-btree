@@ -33,6 +33,31 @@ pub fn get_anchor() -> Option<BufferPoolFrame> {
     None
 }
 
+pub fn get_node(ptr: ObjectPtr) -> Option<BufferPoolFrame> {
+    if let Ok(table) = GLOBAL_PAGE_TABLE.read() {
+        // if there exists a frame in the buffer pool corresponding to the above object pointer then we're good and
+        // the node is already in the buffer pool
+        if let Some(node) = bufmgr::fetch_frame(ptr.data.page_no) { return Some(node.clone()); };
+    } else {
+        if let Ok(mut blocks) = GLOBAL_BUFFER_POOL.write() {
+            if let Ok(mut table) = GLOBAL_PAGE_TABLE.write() {
+                if let Some(node) = blocks.get(ptr.data.page_no) {
+                    if let Ok(locked) = node.read() {
+                        return Some(locked.clone());
+                    }
+                } else {
+                    let from_disk = Node::read(ptr.data.page_no);
+                    let node = Node::from_block(from_disk);
+                    let index = blocks.len();
+                    blocks.insert(index, Arc::new(RwLock::new(BufferPoolFrame::new(node.loc.data.page_no, from_disk))));
+                    table.insert(0, index);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn move_right(val: usize, ptr: ObjectPtr, ubleftsep: f64, lock_type: LwLockType) {
     if lock_type == LwLockType::Shared {} else {}
 }
